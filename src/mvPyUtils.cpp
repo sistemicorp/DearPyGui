@@ -1782,7 +1782,34 @@ ToVectVectDouble(PyObject* value, const std::string& message)
     return items;
 }
 
+std::vector<std::vector<double>>
+ToVectVectDoubleMGAG(PyObject* value, const std::string& message)
+{
+    std::vector<std::vector<double>> items;
+    if (value == nullptr)
+        return items;
 
+    Py_ssize_t _l = GetSizeAndReserveMemoryVectVect(value, items, "list");
+    for (Py_ssize_t i = 0; i < _l; ++i) {
+
+        std::vector<double> _items;
+        PyObject* _value = PyList_GetItem(value, i);
+        if (_value == nullptr) {
+            items.emplace_back(_items);
+            continue;
+        }
+
+        Py_ssize_t _size = PyList_Size(_value);
+        _items.reserve(_size);
+        for (Py_ssize_t j = 0; j < _size; ++j) {
+            _items.emplace_back(PyFloat_AS_DOUBLE(PyList_GET_ITEM(_value, j)));
+        }
+
+        items.emplace_back(_items);
+    }
+
+    return items;
+}
 
 static bool
 VerifyArguments(int start, PyObject* args, const std::vector<mvPythonDataElement>& elements)

@@ -156,6 +156,7 @@ std::vector<std::vector<std::string>>            ToVectVectString     (PyObject*
 std::vector<std::vector<float>>                  ToVectVectFloat      (PyObject* value, const std::string& message = "Type must be an list/tuple of list/tuple of floats.");
 std::vector<std::vector<int>>                    ToVectVectInt        (PyObject* value, const std::string& message = "Type must be an list/tuple of list/tuple of ints.");
 std::vector<std::vector<double>>                 ToVectVectDouble     (PyObject* value, const std::string& message = "Type must be an list/tuple of list/tuple of doubles.");
+std::vector<std::vector<double>>                 ToVectVectDoubleMGAG (PyObject* value, const std::string& message = "Type must be an list/tuple of list/tuple of doubles.");
 std::vector<std::pair<std::string, float>>       ToVectPairStringFloat(PyObject* value, const std::string& message = "Type must be an list/tuple of str,float pairs.");
 
 enum class mvPyDataType

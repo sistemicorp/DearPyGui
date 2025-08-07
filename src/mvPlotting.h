@@ -567,7 +567,7 @@ public:
     void setDataSource(mvUUID dataSource) override { DearPyGui::set_data_source(*this, dataSource, configData.value); }
     void* getValue() override { return &configData.value; }
     PyObject* getPyValue() override { return ToPyList(*configData.value); }
-    void setPyValue(PyObject* value) override { *configData.value = ToVectVectDouble(value); }
+    void setPyValue(PyObject* value) override { *configData.value = ToVectVectDoubleMGAG(value); }
 };
 
 class mvScatterSeries : public mvAppItem

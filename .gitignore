@@ -19,3 +19,5 @@ src/CMakeFiles/
 thirdparty/CMakeFiles/
 thirdparty/Makefile
 thirdparty/cmake_install.cmake
+
+cmake-build-rel/
