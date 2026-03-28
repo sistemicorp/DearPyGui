@@ -1,12 +1,18 @@
+#include "mvPyUtils.h"
+#pragma hdrstop
+
 #include "mvContainers.h"
+
 #include "mvViewport.h"
 #include "mvFontItems.h"
 #include "mvThemes.h"
 #include "mvContainers.h"
-#include "mvPyUtils.h"
 #include "mvItemHandlers.h"
-#include <misc/cpp/imgui_stdlib.h>
 #include "mvTextureItems.h"
+
+#include <misc/cpp/imgui_stdlib.h>
+// For ImGuiWindow
+#include <imgui_internal.h>
 
 //-----------------------------------------------------------------------------
 // [SECTION] get_item_configuration(...) specifics
@@ -36,6 +42,9 @@ DearPyGui::fill_configuration_dict(const mvTabConfig& inConfig, PyObject* outDic
     };
 
     checkbitset("no_tooltip", ImGuiTabItemFlags_NoTooltip, inConfig._flags);
+    checkbitset("unsaved_document", ImGuiTabItemFlags_UnsavedDocument, inConfig._flags);
+    checkbitset("no_close_with_middle_click", ImGuiTabItemFlags_NoCloseWithMiddleMouseButton, inConfig._flags);
+    checkbitset("no_reorder", ImGuiTabItemFlags_NoReorder, inConfig._flags);
 
     if (inConfig._flags & ImGuiTabItemFlags_Leading)
         PyDict_SetItemString(outDict, "order_mode", mvPyObject(ToPyLong((long)TabOrdering::mvTabOrder_Leading)));
@@ -68,10 +77,9 @@ DearPyGui::fill_configuration_dict(const mvChildWindowConfig& inConfig, PyObject
     checkbitset("horizontal_scrollbar", ImGuiWindowFlags_HorizontalScrollbar, inConfig.windowflags);
     checkbitset("menubar", ImGuiWindowFlags_MenuBar, inConfig.windowflags);
     checkbitset("no_scroll_with_mouse", ImGuiWindowFlags_NoScrollWithMouse, inConfig.windowflags);
-    checkbitset("flattened_navigation", ImGuiWindowFlags_NavFlattened, inConfig.windowflags);
 
     // child flags
-    checkbitset("border", ImGuiChildFlags_Border, inConfig.childFlags);
+    checkbitset("border", ImGuiChildFlags_Borders, inConfig.childFlags);
     checkbitset("always_auto_resize", ImGuiChildFlags_AlwaysAutoResize, inConfig.childFlags);
     checkbitset("always_use_window_padding", ImGuiChildFlags_AlwaysUseWindowPadding, inConfig.childFlags);
     checkbitset("auto_resize_x", ImGuiChildFlags_AutoResizeX, inConfig.childFlags);
@@ -79,6 +87,7 @@ DearPyGui::fill_configuration_dict(const mvChildWindowConfig& inConfig, PyObject
     checkbitset("frame_style", ImGuiChildFlags_FrameStyle, inConfig.childFlags);
     checkbitset("resizable_x", ImGuiChildFlags_ResizeX, inConfig.childFlags);
     checkbitset("resizable_y", ImGuiChildFlags_ResizeY, inConfig.childFlags);
+    checkbitset("flattened_navigation", ImGuiChildFlags_NavFlattened, inConfig.childFlags);
 }
 
 void
@@ -98,21 +107,11 @@ DearPyGui::fill_configuration_dict(const mvDragPayloadConfig& inConfig, PyObject
     if (outDict == nullptr)
         return;
 
-    if (inConfig.dragData)
-    {
-        Py_XINCREF(inConfig.dragData);
-        PyDict_SetItemString(outDict, "drag_data", inConfig.dragData);
-    }
-    else
-        PyDict_SetItemString(outDict, "drag_data", GetPyNone());
+	PyObject* dragData = *(inConfig.dragData);
+	PyDict_SetItemString(outDict, "drag_data", dragData? dragData : Py_None);
 
-    if (inConfig.dropData)
-    {
-        Py_XINCREF(inConfig.dropData);
-        PyDict_SetItemString(outDict, "drop_data", inConfig.dropData);
-    }
-    else
-        PyDict_SetItemString(outDict, "drop_data", GetPyNone());
+	PyObject* dropData = *(inConfig.dropData);
+	PyDict_SetItemString(outDict, "drop_data", dropData? dropData : Py_None);
 }
 
 void
@@ -135,10 +134,13 @@ DearPyGui::fill_configuration_dict(const mvTreeNodeConfig& inConfig, PyObject* o
     checkbitset("open_on_arrow", ImGuiTreeNodeFlags_OpenOnArrow, inConfig.flags);
     checkbitset("leaf", ImGuiTreeNodeFlags_Leaf, inConfig.flags);
     checkbitset("bullet", ImGuiTreeNodeFlags_Bullet, inConfig.flags);
-    checkbitset("span_text_width", ImGuiTreeNodeFlags_SpanTextWidth, inConfig.flags);
+    checkbitset("span_text_width", ImGuiTreeNodeFlags_SpanLabelWidth, inConfig.flags);
     // checkbitset("span_available_width", ImGuiTreeNodeFlags_SpanAvailWidth, inConfig.flags);
     checkbitset("span_full_width", ImGuiTreeNodeFlags_SpanFullWidth, inConfig.flags);
     // checkbitset("span_all_columns", ImGuiTreeNodeFlags_SpanAllColumns, inConfig.flags);
+    checkbitset("catch_nav_left", ImGuiTreeNodeFlags_NavLeftJumpsToParent, inConfig.flags);
+
+    PyDict_SetItemString(outDict, "lines", mvPyObject(ToPyInt(inConfig.flags & (ImGuiTreeNodeFlags_DrawLinesNone | ImGuiTreeNodeFlags_DrawLinesFull | ImGuiTreeNodeFlags_DrawLinesToNodes))));
 }
 
 void
@@ -153,6 +155,11 @@ DearPyGui::fill_configuration_dict(const mvTabBarConfig& inConfig, PyObject* out
     };
 
     checkbitset("reorderable", ImGuiTabBarFlags_Reorderable, inConfig.flags);
+    checkbitset("tab_list_popup_button", ImGuiTabBarFlags_TabListPopupButton, inConfig.flags);
+    checkbitset("no_close_with_middle_click", ImGuiTabBarFlags_NoCloseWithMiddleMouseButton, inConfig.flags);
+    checkbitset("no_scrolling_buttons", ImGuiTabBarFlags_NoTabListScrollingButtons, inConfig.flags);
+    checkbitset("no_tooltip", ImGuiTabBarFlags_NoTooltip, inConfig.flags);
+    checkbitset("draw_selected_overline", ImGuiTabBarFlags_DrawSelectedOverline, inConfig.flags);
 }
 
 void
@@ -161,7 +168,6 @@ DearPyGui::fill_configuration_dict(const mvCollapsingHeaderConfig& inConfig, PyO
     if (outDict == nullptr)
         return;
 
-    PyDict_SetItemString(outDict, "closable", mvPyObject(ToPyBool(*inConfig.value)));
     PyDict_SetItemString(outDict, "closable", mvPyObject(ToPyBool(inConfig.closable)));
 
     // helper to check and set bit
@@ -188,15 +194,12 @@ DearPyGui::fill_configuration_dict(const mvWindowAppItemConfig& inConfig, PyObje
     PyDict_SetItemString(outDict, "popup", mvPyObject(ToPyBool(inConfig.popup)));
     PyDict_SetItemString(outDict, "no_close", mvPyObject(ToPyBool(inConfig.no_close)));
     PyDict_SetItemString(outDict, "collapsed", mvPyObject(ToPyBool(inConfig.collapsed)));
-    PyDict_SetItemString(outDict, "min_size", mvPyObject(ToPyPairII(inConfig.min_size.x, inConfig.min_size.y)));
-    PyDict_SetItemString(outDict, "max_size", mvPyObject(ToPyPairII(inConfig.max_size.x, inConfig.max_size.y)));
-    if (inConfig.on_close)
-    {
-        Py_XINCREF(inConfig.on_close);
-        PyDict_SetItemString(outDict, "on_close", inConfig.on_close);
-    }
-    else
-        PyDict_SetItemString(outDict, "on_close", GetPyNone());
+    PyDict_SetItemString(outDict, "min_size", mvPyObject(ToPyPairII((int)inConfig.min_size.x, (int)inConfig.min_size.y)));
+    PyDict_SetItemString(outDict, "max_size", mvPyObject(ToPyPairII((int)inConfig.max_size.x, (int)inConfig.max_size.y)));
+    PyDict_SetItemString(outDict, "copy_contents_shortcut", mvPyObject(ToPyBool(inConfig.copy_contents_shortcut)));
+
+	PyObject* on_close = inConfig.on_close;
+	PyDict_SetItemString(outDict, "on_close", on_close? on_close : Py_None);
 
     // helper to check and set bit
     auto checkbitset = [outDict](const char* keyword, int flag, const int& flags)
@@ -219,6 +222,7 @@ DearPyGui::fill_configuration_dict(const mvWindowAppItemConfig& inConfig, PyObje
     checkbitset("no_saved_settings", ImGuiWindowFlags_NoSavedSettings, inConfig.windowflags);
     checkbitset("no_scroll_with_mouse", ImGuiWindowFlags_NoScrollWithMouse, inConfig.windowflags);
     checkbitset("unsaved_document", ImGuiWindowFlags_UnsavedDocument, inConfig.windowflags);
+    checkbitset("no_docking", ImGuiWindowFlags_NoDocking, inConfig.windowflags);
 }
 
 //-----------------------------------------------------------------------------
@@ -258,14 +262,16 @@ DearPyGui::set_configuration(PyObject* inDict, mvTabConfig& outConfig)
             outConfig._flags = ImGuiTabItemFlags_None;
     }
 
-    if (PyObject* item = PyDict_GetItemString(inDict, "no_tooltip"))
+    // helper for bit flipping
+    auto flagop = [inDict](const char* keyword, int flag, int& flags)
     {
-        bool value = ToBool(item);
-        if (value)
-            outConfig._flags |= ImGuiTabItemFlags_NoTooltip;
-        else
-            outConfig._flags &= ~ImGuiTabItemFlags_NoTooltip;
-    }
+        if (PyObject* item = PyDict_GetItemString(inDict, keyword)) ToBool(item) ? flags |= flag : flags &= ~flag;
+    };
+
+    flagop("no_tooltip", ImGuiTabItemFlags_NoTooltip, outConfig._flags);
+    flagop("unsaved_document", ImGuiTabItemFlags_UnsavedDocument, outConfig._flags);
+    flagop("no_close_with_middle_click", ImGuiTabItemFlags_NoCloseWithMiddleMouseButton, outConfig._flags);
+    flagop("no_reorder", ImGuiTabItemFlags_NoReorder, outConfig._flags);
 }
 
 void
@@ -288,10 +294,9 @@ DearPyGui::set_configuration(PyObject* inDict, mvChildWindowConfig& outConfig)
     flagop("horizontal_scrollbar", ImGuiWindowFlags_HorizontalScrollbar, outConfig.windowflags);
     flagop("menubar", ImGuiWindowFlags_MenuBar, outConfig.windowflags);
     flagop("no_scroll_with_mouse", ImGuiWindowFlags_NoScrollWithMouse, outConfig.windowflags);
-    flagop("flattened_navigation", ImGuiWindowFlags_NavFlattened, outConfig.windowflags);
 
     // child flags
-    flagop("border", ImGuiChildFlags_Border, outConfig.childFlags);
+    flagop("border", ImGuiChildFlags_Borders, outConfig.childFlags);
     flagop("always_auto_resize", ImGuiChildFlags_AlwaysAutoResize, outConfig.childFlags);
     flagop("always_use_window_padding", ImGuiChildFlags_AlwaysUseWindowPadding, outConfig.childFlags);
     flagop("auto_resize_x", ImGuiChildFlags_AutoResizeX, outConfig.childFlags);
@@ -299,6 +304,7 @@ DearPyGui::set_configuration(PyObject* inDict, mvChildWindowConfig& outConfig)
     flagop("frame_style", ImGuiChildFlags_FrameStyle, outConfig.childFlags);
     flagop("resizable_x", ImGuiChildFlags_ResizeX, outConfig.childFlags);
     flagop("resizable_y", ImGuiChildFlags_ResizeY, outConfig.childFlags);
+    flagop("flattened_navigation", ImGuiChildFlags_NavFlattened, outConfig.childFlags);
 }
 
 void
@@ -322,20 +328,12 @@ DearPyGui::set_configuration(PyObject* inDict, mvDragPayloadConfig& outConfig)
 
     if (PyObject* item = PyDict_GetItemString(inDict, "drag_data"))
     {
-        if (outConfig.dragData)
-            Py_XDECREF(outConfig.dragData);
-
-        Py_XINCREF(item);
-        outConfig.dragData = item;
+        *outConfig.dragData = mvPyObject(item == Py_None? nullptr : item, true);
     }
 
     if (PyObject* item = PyDict_GetItemString(inDict, "drop_data"))
     {
-        if (outConfig.dropData)
-            Py_XDECREF(outConfig.dropData);
-
-        Py_XINCREF(item);
-        outConfig.dropData = item;
+        *outConfig.dropData = mvPyObject(item == Py_None? nullptr : item, true);
     }
 }
 
@@ -360,10 +358,17 @@ DearPyGui::set_configuration(PyObject* inDict, mvTreeNodeConfig& outConfig)
     flagop("open_on_arrow", ImGuiTreeNodeFlags_OpenOnArrow, outConfig.flags);
     flagop("leaf", ImGuiTreeNodeFlags_Leaf, outConfig.flags);
     flagop("bullet", ImGuiTreeNodeFlags_Bullet, outConfig.flags);
-    flagop("span_text_width", ImGuiTreeNodeFlags_SpanTextWidth, outConfig.flags);
+    flagop("span_text_width", ImGuiTreeNodeFlags_SpanLabelWidth, outConfig.flags);
     // flagop("span_available_width", ImGuiTreeNodeFlags_SpanAvailWidth, outConfig.flags);
     flagop("span_full_width", ImGuiTreeNodeFlags_SpanFullWidth, outConfig.flags);
     // flagop("span_all_columns", ImGuiTreeNodeFlags_SpanAllColumns, outConfig.flags);
+    flagop("catch_nav_left", ImGuiTreeNodeFlags_NavLeftJumpsToParent, outConfig.flags);
+
+    if (PyObject* item = PyDict_GetItemString(inDict, "lines"))
+    {
+        outConfig.flags &= ~(ImGuiTreeNodeFlags_DrawLinesNone | ImGuiTreeNodeFlags_DrawLinesFull | ImGuiTreeNodeFlags_DrawLinesToNodes);
+        outConfig.flags |= ToInt(item);
+    }
 }
 
 void
@@ -376,6 +381,11 @@ DearPyGui::set_configuration(PyObject* inDict, mvTabBarConfig& outConfig)
         if (PyObject* item = PyDict_GetItemString(inDict, keyword)) ToBool(item) ? flags |= flag : flags &= ~flag;
     };
     flagop("reorderable", ImGuiTabBarFlags_Reorderable, outConfig.flags);
+    flagop("tab_list_popup_button", ImGuiTabBarFlags_TabListPopupButton, outConfig.flags);
+    flagop("no_close_with_middle_click", ImGuiTabBarFlags_NoCloseWithMiddleMouseButton, outConfig.flags);
+    flagop("no_scrolling_buttons", ImGuiTabBarFlags_NoTabListScrollingButtons, outConfig.flags);
+    flagop("no_tooltip", ImGuiTabBarFlags_NoTooltip, outConfig.flags);
+    flagop("draw_selected_overline", ImGuiTabBarFlags_DrawSelectedOverline, outConfig.flags);
 }
 
 void
@@ -429,6 +439,7 @@ DearPyGui::set_configuration(PyObject* inDict, mvAppItem& itemc, mvWindowAppItem
 
     if (PyObject* item = PyDict_GetItemString(inDict, "no_open_over_existing_popup")) outConfig.no_open_over_existing_popup = ToBool(item);
     if (PyObject* item = PyDict_GetItemString(inDict, "no_close")) outConfig.no_close = ToBool(item);
+    if (PyObject* item = PyDict_GetItemString(inDict, "copy_contents_shortcut")) outConfig.copy_contents_shortcut = ToBool(item);
     if (PyObject* item = PyDict_GetItemString(inDict, "collapsed"))
     {
         outConfig._collapsedDirty = true;
@@ -449,12 +460,7 @@ DearPyGui::set_configuration(PyObject* inDict, mvAppItem& itemc, mvWindowAppItem
 
     if (PyObject* item = PyDict_GetItemString(inDict, "on_close"))
     {
-        if (outConfig.on_close)
-            Py_XDECREF(outConfig.on_close);
-        item = SanitizeCallback(item);
-        if (item)
-            Py_XINCREF(item);
-        outConfig.on_close = item;
+        outConfig.on_close = mvPyObject(item == Py_None? nullptr : item, true);
     }
 
     // helper for bit flipping
@@ -478,6 +484,7 @@ DearPyGui::set_configuration(PyObject* inDict, mvAppItem& itemc, mvWindowAppItem
     flagop("no_saved_settings", ImGuiWindowFlags_NoSavedSettings, outConfig.windowflags);
     flagop("no_scroll_with_mouse", ImGuiWindowFlags_NoScrollWithMouse, outConfig.windowflags);
     flagop("unsaved_document", ImGuiWindowFlags_UnsavedDocument, outConfig.windowflags);
+    flagop("no_docking", ImGuiWindowFlags_NoDocking, outConfig.windowflags);
 
 
     outConfig._oldxpos = itemc.state.pos.x;
@@ -647,10 +654,7 @@ DearPyGui::draw_menu(ImDrawList* drawlist, mvAppItem& item, mvMenuConfig& config
 
     // push font if a font object is attached
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -666,7 +670,9 @@ DearPyGui::draw_menu(ImDrawList* drawlist, mvAppItem& item, mvMenuConfig& config
             item.state.active = ImGui::IsItemActive();
             item.state.activated = ImGui::IsItemActivated();
             item.state.deactivated = ImGui::IsItemDeactivated();
+            item.state.prevFocused = item.state.focused;
             item.state.focused = ImGui::IsWindowFocused();
+            item.state.prevHovered = item.state.hovered;
             item.state.hovered = ImGui::IsWindowHovered();
             item.state.rectSize = { ImGui::GetWindowWidth(), ImGui::GetWindowHeight() };
             item.state.contextRegionAvail = { ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y };
@@ -709,7 +715,9 @@ DearPyGui::draw_menu(ImDrawList* drawlist, mvAppItem& item, mvMenuConfig& config
             item.state.active = ImGui::IsItemActive();
             item.state.activated = ImGui::IsItemActivated();
             item.state.deactivated = ImGui::IsItemDeactivated();
+            item.state.prevFocused = item.state.focused;
             item.state.focused = false;
+            item.state.prevHovered = item.state.hovered;
             item.state.hovered = false;
             item.state.rectSize = { 0.0f, 0.0f };
             item.state.contextRegionAvail = { ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y };
@@ -722,7 +730,7 @@ DearPyGui::draw_menu(ImDrawList* drawlist, mvAppItem& item, mvMenuConfig& config
 
     // set cursor position to cached position
     if (item.info.dirtyPos)
-        ImGui::SetCursorPos(previousCursorPos);
+        DearPyGui::RestoreImGuiCursor(previousCursorPos);
 
     if (item.config.indent > 0.0f)
         ImGui::Unindent(item.config.indent);
@@ -779,10 +787,7 @@ DearPyGui::draw_tab(ImDrawList* drawlist, mvAppItem& item, mvTabConfig& config)
 
     // push font if a font object is attached
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -806,6 +811,7 @@ DearPyGui::draw_tab(ImDrawList* drawlist, mvAppItem& item, mvTabConfig& config)
         }
 
         item.state.lastFrameUpdate = GContext->frame;
+        item.state.prevHovered = item.state.hovered;
         // create tab item and see if it is selected
         if (ImGui::BeginTabItem(item.info.internalLabel.c_str(), config.closable ? &item.config.show : nullptr, config._flags))
         {
@@ -840,12 +846,7 @@ DearPyGui::draw_tab(ImDrawList* drawlist, mvAppItem& item, mvTabConfig& config)
             // run call back if it exists
             if (parent->getSpecificValue() != item.uuid)
             {
-                mvSubmitCallback([=, &item]() {
-                    if (parent->config.alias.empty())
-                        mvAddCallback(parent->getCallback(), parent->uuid, ToPyUUID(item.uuid), parent->config.user_data);
-                    else
-                        mvAddCallback(parent->getCallback(), parent->config.alias, ToPyUUID(item.uuid), parent->config.user_data);
-                    });
+                parent->submitCallback(&item);
             }
 
             parent->setValue(item.uuid);
@@ -883,7 +884,7 @@ DearPyGui::draw_tab(ImDrawList* drawlist, mvAppItem& item, mvTabConfig& config)
 
     // set cursor position to cached position
     if (item.info.dirtyPos)
-        ImGui::SetCursorPos(previousCursorPos);
+        DearPyGui::RestoreImGuiCursor(previousCursorPos);
 
     if (item.config.indent > 0.0f)
         ImGui::Unindent(item.config.indent);
@@ -940,10 +941,7 @@ DearPyGui::draw_child_window(ImDrawList* drawlist, mvAppItem& item, mvChildWindo
 
     // push font if a font object is attached
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -954,12 +952,16 @@ DearPyGui::draw_child_window(ImDrawList* drawlist, mvAppItem& item, mvChildWindo
     {
         ScopedID id(item.uuid);
 
+        item.handleImmediateScroll();
+
         // TODO: Do we want to put an if statement to prevent further drawing if not shown?
         ImGui::BeginChild(item.info.internalLabel.c_str(), ImVec2(config.autosize_x ? 0 : (float)item.config.width, config.autosize_y ? 0 : (float)item.config.height), config.childFlags, config.windowflags);
         item.state.lastFrameUpdate = GContext->frame;
         item.state.active = ImGui::IsItemActive();
         item.state.deactivated = ImGui::IsItemDeactivated();
+        item.state.prevFocused = item.state.focused;
         item.state.focused = ImGui::IsWindowFocused();
+        item.state.prevHovered = item.state.hovered;
         item.state.hovered = ImGui::IsWindowHovered();
         item.state.rectSize = { ImGui::GetWindowWidth(), ImGui::GetWindowHeight() };
         item.state.contextRegionAvail = { ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y };
@@ -976,23 +978,8 @@ DearPyGui::draw_child_window(ImDrawList* drawlist, mvAppItem& item, mvChildWindo
 
         }
 
-        if (config._scrollXSet)
-        {
-            if (config.scrollX < 0.0f)
-                ImGui::SetScrollHereX(1.0f);
-            else
-                ImGui::SetScrollX(config.scrollX);
-            config._scrollXSet = false;
-        }
-
-        if (config._scrollYSet)
-        {
-            if (config.scrollY < 0.0f)
-                ImGui::SetScrollHereY(1.0f);
-            else
-                ImGui::SetScrollY(config.scrollY);
-            config._scrollYSet = false;
-        }
+        item.handleDelayedScroll();
+        item.config.scrollXFlags = item.config.scrollYFlags = mvSetScrollFlags_None;
 
         // allows this item to have a render callback
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
@@ -1009,10 +996,7 @@ DearPyGui::draw_child_window(ImDrawList* drawlist, mvAppItem& item, mvChildWindo
 
         }
 
-        config.scrollX = ImGui::GetScrollX();
-        config.scrollY = ImGui::GetScrollY();
-        config.scrollMaxX = ImGui::GetScrollMaxX();
-        config.scrollMaxY = ImGui::GetScrollMaxY();
+        UpdateAppItemScrollInfo(item.state);
 
         ImGui::EndChild();
     }
@@ -1023,7 +1007,7 @@ DearPyGui::draw_child_window(ImDrawList* drawlist, mvAppItem& item, mvChildWindo
 
     // set cursor position to cached position
     if (item.info.dirtyPos)
-        ImGui::SetCursorPos(previousCursorPos);
+        DearPyGui::RestoreImGuiCursor(previousCursorPos);
 
     if (item.config.indent > 0.0f)
         ImGui::Unindent(item.config.indent);
@@ -1080,10 +1064,7 @@ DearPyGui::draw_group(ImDrawList* drawlist, mvAppItem& item, mvGroupConfig& conf
 
     // push font if a font object is attached
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -1139,7 +1120,7 @@ DearPyGui::draw_group(ImDrawList* drawlist, mvAppItem& item, mvGroupConfig& conf
 
     // set cursor position to cached position
     if (item.info.dirtyPos)
-        ImGui::SetCursorPos(previousCursorPos);
+        DearPyGui::RestoreImGuiCursor(previousCursorPos);
 
     if (item.config.indent > 0.0f)
         ImGui::Unindent(item.config.indent);
@@ -1163,14 +1144,31 @@ DearPyGui::draw_drag_payload(ImDrawList* drawlist, mvAppItem& item, mvDragPayloa
 {
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
     {
-        ImGui::SetDragDropPayload(config.payloadType.c_str(), &item, sizeof(mvDragPayload));
+        // ImGui uses memcpy to store the drag data, and the only thing we can
+        // store this way more ore less safely is the numeric UUID. Worst case if
+        // the payload gets deleted during drag'n'drop, we'll simply abandon
+        // the drop callback.
+        ImGui::SetDragDropPayload(config.payloadType.c_str(), &item.uuid, sizeof(item.uuid));
 
-        if (item.info.parentPtr->config.dragCallback)
+        // The mvDragPayload item is a bit peculiar: historically, it uses its own user_data
+        // to pass to the parent item's drag callback.  That's why we can't directly
+        // call parentPtr->submitCallback(), as it would take user_data from the parent
+        // instead of mvDragPayload.
+        mvAppItem* parent = item.info.parentPtr;
+        if (parent->config.dragCallback)
         {
-            if (item.info.parentPtr->config.alias.empty())
-                mvAddCallback(item.info.parentPtr->config.dragCallback, item.config.parent, config.dragData, item.config.user_data);
-            else
-                mvAddCallback(item.info.parentPtr->config.dragCallback, item.info.parentPtr->config.alias, config.dragData, item.config.user_data);
+            // We can't use mvAppItem::submitCallbackEx here because we need custom user_data.
+            mvAddCallback(
+                parent->weak_from_this(),
+                parent->config.dragCallback,
+                item.config.user_data,
+                parent->uuid, parent->config.alias,
+                [dragData=config.dragData] () {
+                    PyObject* pyDragData = *dragData;
+                    Py_XINCREF(pyDragData);
+                    return pyDragData;
+                }
+            );
         }
 
         for (auto& childset : item.childslots)
@@ -1221,10 +1219,7 @@ DearPyGui::draw_tree_node(ImDrawList* drawlist, mvAppItem& item, mvTreeNodeConfi
 
     // push font if a font object is attached
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -1281,7 +1276,7 @@ DearPyGui::draw_tree_node(ImDrawList* drawlist, mvAppItem& item, mvTreeNodeConfi
 
     // set cursor position to cached position
     if (item.info.dirtyPos)
-        ImGui::SetCursorPos(previousCursorPos);
+        DearPyGui::RestoreImGuiCursor(previousCursorPos);
 
     if (item.config.indent > 0.0f)
         ImGui::Unindent(item.config.indent);
@@ -1375,10 +1370,7 @@ DearPyGui::draw_collapsing_header(ImDrawList* drawlist, mvAppItem& item, mvColla
 
     // push font if a font object is attached
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -1423,7 +1415,7 @@ DearPyGui::draw_collapsing_header(ImDrawList* drawlist, mvAppItem& item, mvColla
 
     // set cursor position to cached position
     if (item.info.dirtyPos)
-        ImGui::SetCursorPos(previousCursorPos);
+        DearPyGui::RestoreImGuiCursor(previousCursorPos);
 
     if (item.config.indent > 0.0f)
         ImGui::Unindent(item.config.indent);
@@ -1467,10 +1459,7 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
 
     // handle fonts
     if (item.font)
-    {
-        ImFont* fontptr = static_cast<mvFont*>(item.font.get())->getFontPtr();
-        ImGui::PushFont(fontptr);
-    }
+        static_cast<mvFont*>(item.font.get())->pushFont();
 
     // themes
     apply_local_theming(&item);
@@ -1510,6 +1499,8 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
 
     ImGui::SetNextWindowSizeConstraints(config.min_size, config.max_size);
 
+    item.handleImmediateScroll();
+
     if (config.modal)
     {
         if (item.info.shownLastFrame)
@@ -1526,15 +1517,14 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
             // shouldn't have to do this but do. Fix later
             item.config.show = false;
             item.state.lastFrameUpdate = GContext->frame;
+            item.state.prevHovered = item.state.hovered;
             item.state.hovered = false;
+            item.state.prevFocused = item.state.focused;
             item.state.focused = false;
             item.state.toggledOpen = false;
             item.state.visible = false;
 
-            if (item.config.alias.empty())
-                mvAddCallback(config.on_close, item.uuid, nullptr, item.config.user_data);
-            else
-                mvAddCallback(config.on_close, item.config.alias, nullptr, item.config.user_data);
+            item.submitCallbackEx(config.on_close, []() -> PyObject* { return nullptr; });
 
             // handle popping themes
             cleanup_local_theming(&item);
@@ -1558,12 +1548,34 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
 
             // handle popping themes
             cleanup_local_theming(&item);
+
+            // See if it's just been closed (can't rely on BeginPopup == false here
+            // because BeginPopup can, even if only theoretically, return false for
+            // an open popup - e.g. when it has zero size).
+            if (!ImGui::IsPopupOpen(item.info.internalLabel.c_str()))
+            {
+                // Hide it so that the callback doesn't fire at the next frame
+                item.config.show = false;
+                // Update item state so that get_item_state is valid
+                item.state.lastFrameUpdate = GContext->frame;
+                item.state.prevHovered = item.state.hovered;
+                item.state.hovered = false;
+                item.state.prevFocused = item.state.focused;
+                item.state.focused = false;
+                item.state.toggledOpen = false;
+                item.state.visible = false;
+                // Fire the close callback, if any
+                item.submitCallbackEx(config.on_close, []() -> PyObject* { return nullptr; });
+            }
             return;
         }
     }
 
     else
     {
+		ImGuiIO &io = ImGui::GetIO();
+        io.ConfigWindowsCopyContentsWithCtrlC = config.copy_contents_shortcut;
+
         if (!ImGui::Begin(item.info.internalLabel.c_str(), config.no_close ? nullptr : &item.config.show, config.windowflags))
         {
             if (config.mainWindow)
@@ -1630,28 +1642,10 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
     // handle popping themes
     cleanup_local_theming(&item);
 
-    if (config._scrollXSet)
-    {
-        if (config.scrollX < 0.0f)
-            ImGui::SetScrollHereX(1.0f);
-        else
-            ImGui::SetScrollX(config.scrollX);
-        config._scrollXSet = false;
-    }
+    item.handleDelayedScroll();
+    item.config.scrollXFlags = item.config.scrollYFlags = mvSetScrollFlags_None;
 
-    if (config._scrollYSet)
-    {
-        if (config.scrollY < 0.0f)
-            ImGui::SetScrollHereY(1.0f);
-        else
-            ImGui::SetScrollY(config.scrollY);
-        config._scrollYSet = false;
-    }
-
-    config.scrollX = ImGui::GetScrollX();
-    config.scrollY = ImGui::GetScrollY();
-    config.scrollMaxX = ImGui::GetScrollMaxX();
-    config.scrollMaxY = ImGui::GetScrollMaxY();
+    UpdateAppItemScrollInfo(item.state);
 
     //-----------------------------------------------------------------------------
     // update state
@@ -1659,7 +1653,9 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
 
     item.state.lastFrameUpdate = GContext->frame;
     item.state.visible = true;
+    item.state.prevHovered = item.state.hovered;
     item.state.hovered = ImGui::IsWindowHovered();
+    item.state.prevFocused = item.state.focused;
     item.state.focused = ImGui::IsWindowFocused();
     item.state.rectSize = { ImGui::GetWindowSize().x, ImGui::GetWindowSize().y };
     item.state.toggledOpen = ImGui::IsWindowCollapsed();
@@ -1706,19 +1702,50 @@ DearPyGui::draw_window(ImDrawList* drawlist, mvAppItem& item, mvWindowAppItemCon
     if (!item.config.show)
     {
         item.state.lastFrameUpdate = GContext->frame;
+        item.state.prevHovered = item.state.hovered;
         item.state.hovered = false;
+        item.state.prevFocused = item.state.focused;
         item.state.focused = false;
         item.state.toggledOpen = false;
         item.state.visible = false;
 
-        if (item.config.alias.empty())
-            mvAddCallback(config.on_close, item.uuid, nullptr, item.config.user_data);
-        else
-            mvAddCallback(config.on_close, item.config.alias, nullptr, item.config.user_data);
+        item.submitCallbackEx(config.on_close, []() -> PyObject* { return nullptr; });
     }
 
     if (item.handlerRegistry)
         item.handlerRegistry->checkEvents(&item.state);
+}
+
+void
+check_drop_event(mvAppItem* item)
+{
+    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(item->config.payloadType.c_str()))
+    {
+        IM_ASSERT(payload->DataSize == sizeof(mvUUID) && "Unexpected drag payload data size.");
+        mvUUID payloadUUID = *(mvUUID*)payload->Data;
+        // Let's see if the payload still exists.
+        auto payloadItem = GetItem(*GContext->itemRegistry, payloadUUID);
+        if (payloadItem && payloadItem->type == mvAppItemType::mvDragPayload)
+        {
+            auto payloadActual = static_cast<const mvDragPayload*>(payloadItem);
+            // Note: we're passing None in user_data for backward compatibility
+            // (mvAddCallback will derive None from the mvPyObject that stores nullptr).
+            // One day this may change, but we need to decide which of the user_data's
+            // (parent's or payload's) we're going to pass here.
+            // We can't use mvAppItem::submitCallbackEx here because we need custom user_data.
+            mvAddCallback(
+                item->weak_from_this(),
+                item->config.dropCallback,
+                std::make_shared<mvPyObject>(nullptr),
+                item->uuid, item->config.alias,
+                [dragData = payloadActual->configData.dragData] () {
+                    PyObject* pyDragData = *dragData;
+                    Py_XINCREF(pyDragData);
+                    return pyDragData;
+                }
+            );
+        }
+    }
 }
 
 void
@@ -1732,15 +1759,7 @@ apply_drag_drop(mvAppItem* item)
         ScopedID id(item->uuid);
         if (ImGui::BeginDragDropTarget())
         {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(item->config.payloadType.c_str()))
-            {
-                auto payloadActual = static_cast<const mvDragPayload*>(payload->Data);
-                if (item->config.alias.empty())
-                    mvAddCallback(item->config.dropCallback, item->uuid, payloadActual->configData.dragData, nullptr);
-                else
-                    mvAddCallback(item->config.dropCallback, item->config.alias, payloadActual->configData.dragData, nullptr);
-            }
-
+            check_drop_event(item);
             ImGui::EndDragDropTarget();
         }
     }
@@ -1754,15 +1773,7 @@ apply_drag_drop_nodraw(mvAppItem* item)
         ScopedID id(item->uuid);
         if (ImGui::BeginDragDropTarget())
         {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(item->config.payloadType.c_str()))
-            {
-                auto payloadActual = static_cast<const mvDragPayload*>(payload->Data);
-                if (item->config.alias.empty())
-                    mvAddCallback(item->config.dropCallback, item->uuid, payloadActual->configData.dragData, nullptr);
-                else
-                    mvAddCallback(item->config.dropCallback, item->config.alias, payloadActual->configData.dragData, nullptr);
-            }
-
+            check_drop_event(item);
             ImGui::EndDragDropTarget();
         }
     }

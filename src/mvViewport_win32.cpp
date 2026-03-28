@@ -84,14 +84,8 @@ static void
 StartNewFrame()
 {
 	// Font manager is thread-unsafe, so we'd better sync it
-	std::lock_guard<std::recursive_mutex> lk(GContext->mutex);
-
-	if (mvToolManager::GetFontManager().isInvalid())
-	{
-		mvToolManager::GetFontManager().rebuildAtlas();
-		ImGui_ImplDX11_InvalidateDeviceObjects();
-		mvToolManager::GetFontManager().updateAtlas();
-	}
+	std::lock_guard lk(GContext->mutex);
+	mvToolManager::GetFontManager().updateAtlas();
 
 	// Start the Dear ImGui frame
 	ImGui_ImplDX11_NewFrame();
@@ -115,7 +109,7 @@ mvPrerender(mvViewport& viewport)
 	// An extra scope for mutex lock
 	{
 		// TODO: we probably need a separate mutex for this
-		std::lock_guard<std::recursive_mutex> lk(GContext->mutex);
+		std::lock_guard lk(GContext->mutex);
 		ApplyViewportParms(viewport);
 	}
 
@@ -176,7 +170,7 @@ mvHandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
 
 	case WM_MOVE:
 	{
-		std::lock_guard<std::recursive_mutex> lk(GContext->mutex);
+		std::lock_guard lk(GContext->mutex);
 
 		// We explicitly ignore all WM_MOVE messages until the rendering loop
 		// starts.  This is because on Windows 10 and later, the coordinates passed
@@ -217,7 +211,7 @@ mvHandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
 				cheight = crect.bottom - crect.top;
 			}
 
-			std::lock_guard<std::recursive_mutex> lk(GContext->mutex);
+			std::lock_guard lk(GContext->mutex);
 
 			viewport->actualWidth = awidth;
 			viewport->actualHeight = aheight;
@@ -257,7 +251,7 @@ mvHandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
 		if (wParam == resizeTimerID)
 		{
 			// TODO: we probably need a separate mutex for ApplyViewportParms
-			std::lock_guard<std::recursive_mutex> lk(GContext->mutex);
+			std::lock_guard lk(GContext->mutex);
 			ApplyViewportParms(*viewport);
 			StartNewFrame();
 			Render();
@@ -276,12 +270,10 @@ mvHandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
 		break;
 	case WM_CLOSE:
 		if (GContext->viewport->disableClose) {
-			mvSubmitCallback([=]() {
-				mvRunCallback(GContext->callbackRegistry->onCloseCallback, 0, nullptr, GContext->callbackRegistry->onCloseCallbackUserData);
-				});
+			mvAddOwnerlessCallback(GContext->callbackRegistry->onCloseCallback, GContext->callbackRegistry->onCloseCallbackUserData);
 			return 0;
 		}
-		GContext->started = false;
+		StopRendering();
 		DestroyWindow(hWnd);
 		::PostQuitMessage(0);
 		return 0;
@@ -478,13 +470,13 @@ mvToggleFullScreen(mvViewport& viewport)
 {
 	mvViewportData* viewportData = (mvViewportData*)viewport.platformSpecifics;
 
-	static size_t storedWidth = 0;
-	static size_t storedHeight = 0;
-	static int    storedXPos = 0;
-	static int    storedYPos = 0;
+	static i32 storedWidth = 0;
+	static i32 storedHeight = 0;
+	static i32 storedXPos = 0;
+	static i32 storedYPos = 0;
 
-	size_t width = GetSystemMetrics(SM_CXSCREEN);
-	size_t height = GetSystemMetrics(SM_CYSCREEN);
+	int width = GetSystemMetrics(SM_CXSCREEN);
+	int height = GetSystemMetrics(SM_CYSCREEN);
 
 	if (viewport.fullScreen)
 	{
